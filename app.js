@@ -12,6 +12,7 @@ const CATEGORY_ICON = {
   Food: "🍽️", Shopping: "🛍️", Travel: "✈️", Bills: "🧾", Rent: "🏠",
   Health: "💊", Entertainment: "🎬", Education: "📚", Salary: "💼",
   Gift: "🎁", Freelance: "💻", Interest: "🏦", Business: "📈", Other: "•",
+  Adjustment: "🧮",
 };
 const ACCOUNT_TYPE_LABEL = { bank: "Bank", cash: "Cash", upi: "UPI", savings: "Savings", credit_card: "Credit card", other: "Other" };
 const MONTH_FMT = new Intl.DateTimeFormat("en-IN", { month: "short", year: "numeric" });
@@ -117,6 +118,7 @@ on(document, "DOMContentLoaded", () => {
   initDashboardLinks();
   initTransactionForm();
   initAccountForm();
+  initAdjustBalanceForm();
   initSettingsForms();
   initFilters();
   initDataActions();
@@ -263,15 +265,25 @@ function populateAccountSelect(selectEl, includeAll = false) {
   selectEl.innerHTML = (includeAll ? '<option value="">All accounts</option>' : "") + opts;
 }
 
-on($("#add-transaction-btn"), "click", () => openTransactionModal());
+on($("#add-money-btn"), "click", () => openTransactionModal(null, "income"));
+on($("#add-expense-btn"), "click", () => openTransactionModal(null, "expense"));
 
-function openTransactionModal(tx = null) {
+function updateTxLabels() {
+  const isIncome = state.currentType === "income";
+  $("#tx-description-label").textContent = isIncome ? "Description" : "Description";
+  $("#tx-notes-label").textContent = isIncome ? "Received from (optional)" : "Notes (optional)";
+  $("#tx-notes").placeholder = isIncome ? "e.g. Dad, Employer, Client name" : "Anything else worth remembering";
+  $("#tx-description").placeholder = isIncome ? "e.g. October salary, Dad sent money" : "e.g. Groceries, Electricity bill";
+}
+
+function openTransactionModal(tx = null, forcedType = null) {
   state.editingTxId = tx ? tx.id : null;
-  $("#tx-modal-title").textContent = tx ? "Edit transaction" : "Add transaction";
-  state.currentType = tx ? tx.type : "expense";
+  state.currentType = tx ? tx.type : (forcedType || "expense");
+  $("#tx-modal-title").textContent = tx ? "Edit transaction" : (state.currentType === "income" ? "Add money" : "Log expense");
   $$(".type-btn").forEach((b) => b.classList.toggle("is-active", b.dataset.type === state.currentType));
   populateCategoryOptions();
   populateAccountSelect($("#tx-account"));
+  updateTxLabels();
   $("#tx-error").textContent = "";
 
   if (state.accounts.length === 0) {
@@ -295,6 +307,7 @@ $$(".type-btn").forEach((btn) => on(btn, "click", () => {
   btn.classList.add("is-active");
   state.currentType = btn.dataset.type;
   populateCategoryOptions();
+  updateTxLabels();
 }));
 
 function initTransactionForm() {
@@ -355,7 +368,7 @@ function initFilters() {
 }
 function populateFilterOptions() {
   const catSel = $("#filter-category");
-  const allCats = [...new Set([...EXPENSE_CATEGORIES, ...INCOME_CATEGORIES])];
+  const allCats = [...new Set([...EXPENSE_CATEGORIES, ...INCOME_CATEGORIES, "Adjustment"])];
   catSel.innerHTML = '<option value="">All categories</option>' + allCats.map((c) => `<option value="${c}">${c}</option>`).join("");
   populateAccountSelect($("#filter-account"), true);
 }
@@ -410,7 +423,7 @@ function renderTransactionsList() {
   $("#transactions-count").textContent = `${filtered.length} transaction${filtered.length === 1 ? "" : "s"}`;
   container.innerHTML = filtered.length
     ? filtered.map(ledgerRowHtml).join("")
-    : `<div class="ledger-empty">No transactions match these filters yet. Log one with "+ Add transaction".</div>`;
+    : `<div class="ledger-empty">No transactions match these filters yet. Log one with "+ Add money" or "+ Log expense" above.</div>`;
   wireDeleteButtons(container);
 }
 
@@ -476,6 +489,57 @@ function initAccountForm() {
   });
 }
 
+// --------------------- Adjust balance (manual correction) ---------------------
+function openAdjustBalanceModal(acc) {
+  $("#adjust-acc-id").value = acc.id;
+  $("#adjust-current-note").textContent = `${acc.name} currently shows ${currency(acc.current_balance)}.`;
+  $("#adjust-new-balance").value = acc.current_balance;
+  $("#adjust-reason").value = "";
+  $("#adjust-error").textContent = "";
+  openModal("modal-adjust");
+}
+
+function initAdjustBalanceForm() {
+  on($("#adjust-form"), "submit", async (e) => {
+    e.preventDefault();
+    const errEl = $("#adjust-error");
+    errEl.textContent = "";
+
+    const accId = $("#adjust-acc-id").value;
+    const acc = state.accounts.find((a) => a.id === accId);
+    if (!acc) { errEl.textContent = "That account no longer exists — refresh and try again."; return; }
+
+    const newBalance = parseFloat($("#adjust-new-balance").value);
+    if (isNaN(newBalance) || newBalance < 0) { errEl.textContent = "Enter a valid balance."; return; }
+
+    const diff = Math.round((newBalance - Number(acc.current_balance)) * 100) / 100;
+    if (diff === 0) { closeModals(); toast("Balance already matches — nothing to change."); return; }
+
+    const reason = $("#adjust-reason").value.trim();
+    const payload = {
+      user_id: state.user.id,
+      account_id: acc.id,
+      type: diff > 0 ? "income" : "expense",
+      amount: Math.abs(diff),
+      category: "Adjustment",
+      description: reason || "Balance adjustment",
+      date: new Date().toISOString().slice(0, 10),
+      notes: "Manual balance correction",
+    };
+
+    const btn = e.submitter;
+    btn.disabled = true;
+    const { error } = await sb.from("transactions").insert(payload);
+    btn.disabled = false;
+    if (error) { errEl.textContent = friendlyError(error); return; }
+
+    closeModals();
+    toast("Balance updated.", "success");
+    await Promise.all([loadAccounts(), loadTransactions()]);
+    renderEverything();
+  });
+}
+
 function renderAccountsGrid() {
   const grid = $("#accounts-grid");
   if (state.accounts.length === 0) {
@@ -494,6 +558,7 @@ function renderAccountsGrid() {
       <div class="account-card-balance">${currency(a.current_balance)}</div>
       <div class="account-card-open">Opening balance ${currency(a.opening_balance)}</div>
       <div class="account-card-actions">
+        <button class="btn btn-ghost" data-adjust-acc="${a.id}">Adjust balance</button>
         <button class="btn btn-ghost" data-edit-acc="${a.id}">Edit</button>
         <button class="btn btn-danger" data-del-acc="${a.id}">Delete</button>
       </div>
@@ -502,6 +567,10 @@ function renderAccountsGrid() {
   $$("[data-edit-acc]", grid).forEach((btn) => on(btn, "click", () => {
     const acc = state.accounts.find((a) => a.id === btn.dataset.editAcc);
     openAccountModal(acc);
+  }));
+  $$("[data-adjust-acc]", grid).forEach((btn) => on(btn, "click", () => {
+    const acc = state.accounts.find((a) => a.id === btn.dataset.adjustAcc);
+    openAdjustBalanceModal(acc);
   }));
   $$("[data-del-acc]", grid).forEach((btn) => on(btn, "click", () => {
     const id = btn.dataset.delAcc;
@@ -543,7 +612,7 @@ function renderDashboard() {
   $("#kpi-total-balance").textContent = currency(totalBalance);
 
   const mKey = thisMonthKey();
-  const thisMonthTx = state.transactions.filter((t) => t.date.slice(0, 7) === mKey);
+  const thisMonthTx = state.transactions.filter((t) => t.date.slice(0, 7) === mKey && isAnalytic(t));
   const income = thisMonthTx.filter((t) => t.type === "income").reduce((s, t) => s + Number(t.amount), 0);
   const expense = thisMonthTx.filter((t) => t.type === "expense").reduce((s, t) => s + Number(t.amount), 0);
   $("#kpi-income").textContent = currency(income);
@@ -589,9 +658,11 @@ function renderCashflowChart() {
   });
 }
 
+function isAnalytic(t) { return t.category !== "Adjustment"; }
+
 function sumForMonth(dateObj, type) {
   const key = monthKey(dateObj);
-  return state.transactions.filter((t) => t.type === type && t.date.slice(0, 7) === key).reduce((s, t) => s + Number(t.amount), 0);
+  return state.transactions.filter((t) => t.type === type && t.date.slice(0, 7) === key && isAnalytic(t)).reduce((s, t) => s + Number(t.amount), 0);
 }
 
 function renderBreakdownChart(monthTx) {
@@ -645,8 +716,8 @@ function destroyChart(key) { if (state.charts[key]) { state.charts[key].destroy(
 // =====================================================================
 function renderInsights() {
   const mKey = thisMonthKey();
-  const thisMonthExpenses = state.transactions.filter((t) => t.type === "expense" && t.date.slice(0, 7) === mKey);
-  const thisMonthIncome = state.transactions.filter((t) => t.type === "income" && t.date.slice(0, 7) === mKey).reduce((s, t) => s + Number(t.amount), 0);
+  const thisMonthExpenses = state.transactions.filter((t) => t.type === "expense" && t.date.slice(0, 7) === mKey && isAnalytic(t));
+  const thisMonthIncome = state.transactions.filter((t) => t.type === "income" && t.date.slice(0, 7) === mKey && isAnalytic(t)).reduce((s, t) => s + Number(t.amount), 0);
   const totalExpense = thisMonthExpenses.reduce((s, t) => s + Number(t.amount), 0);
 
   const daysSoFar = new Date().getDate();

@@ -64,7 +64,12 @@ a { color: inherit; }
 .btn-ghost:hover { background: rgba(0,0,0,0.03); }
 .btn-danger { background: var(--rust); color: #fff; }
 .btn-danger:hover { background: #833B23; }
+.btn-income { background: var(--teal); color: #fff; }
+.btn-income:hover { background: #245A4C; }
+.btn-expense { background: transparent; border-color: var(--rust); color: var(--rust); }
+.btn-expense:hover { background: var(--rust-soft); }
 .btn-block { width: 100%; }
+.topbar-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 .link-btn { background: none; border: none; color: var(--teal); font-weight: 600; font-size: 0.88rem; padding: 0; }
 
 /* --------------------------- toasts --------------------------- */
@@ -230,8 +235,8 @@ a { color: inherit; }
 .account-card-type { font-size: 0.76rem; color: var(--muted); text-transform: capitalize; }
 .account-card-balance { font-family: var(--font-display); font-size: 1.7rem; font-weight: 600; }
 .account-card-open { font-size: 0.8rem; color: var(--muted); }
-.account-card-actions { display: flex; gap: 8px; margin-top: 4px; }
-.account-card-actions button { flex: 1; padding: 7px; font-size: 0.82rem; }
+.account-card-actions { display: flex; gap: 6px; margin-top: 4px; flex-wrap: wrap; }
+.account-card-actions button { flex: 1; min-width: 84px; padding: 7px 6px; font-size: 0.78rem; }
 
 /* --------------------------- filters --------------------------- */
 .filter-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }

@@ -9,7 +9,7 @@ own private data — nothing is shared between accounts.
 
 1. Go to [supabase.com](https://supabase.com) → your project (or create a new one).
 2. Open **SQL Editor** → **New query**, paste the entire contents of
-   [`supabase/schema.sql`](./supabase/schema.sql), and click **Run**.
+   [`schema.sql`](./schema.sql), and click **Run**.
    - This creates `profiles`, `accounts`, `transactions`, a trigger that
      auto-creates a profile whenever someone signs up, a trigger that keeps
      account balances in sync automatically, and Row Level Security so
@@ -28,7 +28,7 @@ own private data — nothing is shared between accounts.
 
 ## 2. Connect the app to your project
 
-Open [`js/config.js`](./js/config.js) and paste in the two values:
+Open [`config.js`](./config.js) and paste in the two values:
 
 ```js
 export const SUPABASE_URL = "https://xxxxxxxx.supabase.co";
